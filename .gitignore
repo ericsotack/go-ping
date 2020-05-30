@@ -1,8 +1,9 @@
- # Jetbrains stuff
- *.iml
+# Jetbrains stuff
+*.iml
 .idea/
+*.docx
  
- # Binaries for programs and plugins
+# Binaries for programs and plugins
 *.exe
 *.exe~
 *.dll
