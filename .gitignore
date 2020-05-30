@@ -1,6 +1,6 @@
  # Jetbrains stuff
  *.iml
- idea/
+.idea/
  
  # Binaries for programs and plugins
 *.exe
