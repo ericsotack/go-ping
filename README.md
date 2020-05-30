@@ -1,2 +1,2 @@
 # go-ping
-Basic implementation of ping utility in Go.
+Basic implementation of the ping utility in Go.
