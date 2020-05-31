@@ -4,10 +4,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	//"golang.org/x/net/icmp"
 	"log"
 	"net"
-	//"sync"
+	"os"
 	"time"
 )
 
@@ -23,16 +22,6 @@ type Command struct {
 	timeout		time.Duration
 }
 
-func sendPing() {
-	// start := time.now()
-}
-
-
-func receivePing() {
-	// create icmp listener
-	//end := time.now()
-}
-
 func parseArgs() (*Command, error){
 	var hostname string = ""	// default val
 	var count uint
@@ -40,6 +29,12 @@ func parseArgs() (*Command, error){
 	var interval int64
 	var deadline int64
 	var timeout int64
+
+	flag.Usage = func() {
+		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
+		_, _ = fmt.Fprintln(flag.CommandLine.Output(), "NOTE: Endpoint should come after all flags!")
+		flag.PrintDefaults()
+	}
 
 	flag.UintVar(&count, "c", 4, "The number of pings to be sent out (default = 4).")
 	flag.UintVar(&ttl, "t", 255, "The ttl for the ping (TTL, default = 255).")
