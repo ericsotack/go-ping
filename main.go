@@ -8,26 +8,15 @@ import (
 	"net"
 	"os"
 	"time"
+
+	"go-ping/pinger"
 )
 
-const billion = 1000000000
-
-type Command struct {
-	addr 		net.IP
-	hostname 	string
-	count 		uint
-	ttl 		uint
-	interval	time.Duration
-	deadline	time.Duration
-	timeout		time.Duration
-}
-
-func parseArgs() (*Command, error){
+func parseArgs() (*pinger.Command, error){
 	var hostname string = ""	// default val
 	var count uint
 	var ttl uint
 	var interval int64
-	var deadline int64
 	var timeout int64
 
 	flag.Usage = func() {
@@ -39,7 +28,6 @@ func parseArgs() (*Command, error){
 	flag.UintVar(&count, "c", 4, "The number of pings to be sent out (default = 4).")
 	flag.UintVar(&ttl, "t", 255, "The ttl for the ping (TTL, default = 255).")
 	flag.Int64Var(&interval, "i", 1, "The interval (in seconds) to send pings out at (default = 1).")
-	flag.Int64Var(&deadline, "w", 0, "The number of seconds allowed for all ping requests to finish (default = 0). 0 indicates unlimited time.")
 	flag.Int64Var(&timeout, "W", 1, "The number of seconds waited for a response for each packet (default = 4).")
 	flag.Parse()
 
@@ -60,7 +48,7 @@ func parseArgs() (*Command, error){
 		ip = ips[0]	// defaults to the first IP that this hostname resolves to
 	}
 
-	return &Command{ ip, hostname, count, ttl, time.Duration(interval * billion), time.Duration(deadline * billion), time.Duration(timeout * billion)}, nil
+	return &pinger.Command{ Addr: ip, Hostname: hostname, Count: count, Ttl: ttl, Interval: time.Duration(interval) * time.Second, Timeout: time.Duration(timeout) * time.Second}, nil
 }
 
 
@@ -70,5 +58,6 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("%+v\n", *cmd)
+	_, err = pinger.Ping(cmd)
 
 }
