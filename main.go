@@ -7,17 +7,20 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"go-ping/pinger"
 )
 
 func parseArgs() (*pinger.Command, error){
-	var hostname string = ""	// default val
-	var count uint
-	var ttl uint
-	var interval int64
-	var timeout int64
+	var version pinger.IPVersion = pinger.UNSET	// default val
+	var logging = log.New(os.Stdout, "GO-PING: ", 0)
+	var count int
+	var ttl int
+	var interval int64		// TODO change this to be Time.Duration
+	var timeout int64		// TODO change this to be Time.Duration
+
 
 	flag.Usage = func() {
 		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
@@ -25,10 +28,10 @@ func parseArgs() (*pinger.Command, error){
 		flag.PrintDefaults()
 	}
 
-	flag.UintVar(&count, "c", 4, "The number of pings to be sent out (default = 4).")
-	flag.UintVar(&ttl, "t", 255, "The ttl for the ping (TTL, default = 255).")
+	flag.IntVar(&count, "c", 4, "The number of pings to be sent out (default = 4).")
+	flag.IntVar(&ttl, "t", 255, "The ttl for the ping (TTL, default = 255).")
 	flag.Int64Var(&interval, "i", 1, "The interval (in seconds) to send pings out at (default = 1).")
-	flag.Int64Var(&timeout, "W", 1, "The number of seconds waited for a response for each packet (default = 4).")
+	flag.Int64Var(&timeout, "W", 4, "The number of seconds waited for a response for each packet (default = 4).")
 	flag.Parse()
 
 	if flag.NArg() == 0 {
@@ -38,17 +41,21 @@ func parseArgs() (*pinger.Command, error){
 	}
 	endpoint := flag.Arg(0)
 
-	ip := net.ParseIP(endpoint)
-	if ip == nil {
-		ips, err := net.LookupIP(endpoint)
-		if err != nil {
-			return nil, errors.New(fmt.Sprintf("Unable to resolve hostname: %s", endpoint))
-		}
-		hostname = endpoint
-		ip = ips[0]	// defaults to the first IP that this hostname resolves to
+	ip, err := net.ResolveIPAddr("ip", endpoint)
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("Unable to resolve hostname: %s", endpoint))
 	}
 
-	return &pinger.Command{ Addr: ip, Hostname: hostname, Count: count, Ttl: ttl, Interval: time.Duration(interval) * time.Second, Timeout: time.Duration(timeout) * time.Second}, nil
+	if strings.ContainsRune(ip.String(), '.'){
+		version = pinger.IPv4
+	} else if strings.ContainsRune(ip.String(), ':') {
+		version = pinger.IPv6
+	} else {
+		return nil, errors.New(fmt.Sprintf("Unable to determine if %v is IPv4 or IPv6.", ip.String()))
+	}
+	return &pinger.Command{ Addr: ip, Version: version, Count: count,
+		Ttl: ttl, Interval: time.Duration(interval) * time.Second,
+		Timeout: time.Duration(timeout) * time.Second, Logging: logging}, nil
 }
 
 
@@ -57,7 +64,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%+v\n", *cmd)
-	_, err = pinger.Ping(cmd)
-
+	fmt.Printf("%+v\n", *cmd)	// TODO replace with "running with args"
+	if _, err := cmd.Ping(); err != nil {
+		cmd.Logging.Println(fmt.Sprintf("error occured while performing Ping: %v", err))
+	}
 }
