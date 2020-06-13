@@ -1,3 +1,4 @@
+// Package pinger emulates the Ping utility provided on most unix systems.
 package pinger
 
 import (
@@ -15,18 +16,29 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
+// Type to represent IP Version Types.
+// Can either be "IPv4", "IPv6", or "" for unset.
 type IPVersion string
 
+// Constants for IPVersion type and for proto fields of functions and methods.
 const (
-	IPv4 = "IPv4"
-	IPv6 = "IPv6"
-	UNSET = ""
+	IPv4 IPVersion = "IPv4"
+	IPv6 IPVersion = "IPv6"
+	UNSET IPVersion = ""
 
 	protocolICMP 	= 1
 	protocolICMPv6 	= 58
 )
 
-
+// Represents a ping command run.
+// Gathers the necessary information to perform a ping.
+// Addr: the destination address
+// Version:  the IPVersion
+// Count: the number of ICMP echo requests to send out
+// Ttl: the TTL to set on each ICMP request (doesn't work on Windows)
+// Interval: the time between each echo request send
+// MaxTime: the maximum amount of time allowed for the entire program to run
+// Logging: the logger to which the output is written
 type Command struct {
 	Addr      		*net.IPAddr
 	Version   		IPVersion
@@ -35,18 +47,26 @@ type Command struct {
 	Interval  		time.Duration
 	MaxTime			time.Duration
 	Logging   		*log.Logger
-	id        		int
-	seqStart  		int
-	done      		chan bool
-	wg        		sync.WaitGroup
-	sentCount 		int
-	sentAttempts 	int
-	recvCount		int
-	startTime		time.Time
-	rtts			[]time.Duration
+	id        		int				// the id to assign inside the IP packet
+	seqStart  		int				// the starting sequence number for the packets
+	done      		chan bool		// the channel that is notified for a force quit or system interrupt
+	wg        		sync.WaitGroup	// the waitgroup that Ping() waits on
+	sentCount 		int				// the number of pings actually sent
+	sentAttempts 	int				// the number of pings that it attempted to send
+	recvCount		int				// the number of pings received
+	startTime		time.Time		// the time we started trying to run pings
+	rtts			[]time.Duration	// the array of round-trip-times used to generate post-run stats
 }
 
 
+// Creates and returns a new *Command struct that can be used to run a ping.
+// addr: the destination address
+// version:  the IPVersion
+// count: the number of ICMP echo requests to send out
+// ttl: the TTL to set on each ICMP request (doesn't work on Windows)
+// interval: the time between each echo request send
+// maxTime: the maximum amount of time allowed for the entire program to run
+// logging: the logger to which the output is written
 func New(addr *net.IPAddr, version IPVersion, count int, ttl int, interval time.Duration, maxTime time.Duration, logging *log.Logger) *Command {
 	return &Command{
 		Addr:     		addr,
@@ -69,6 +89,9 @@ func New(addr *net.IPAddr, version IPVersion, count int, ttl int, interval time.
 }
 
 
+// For a *command, create and return a new *icmp.PacketConn from which
+// we can send and receive pings.
+// Returns nil on error
 func (command *Command) listen()  *icmp.PacketConn {
 	var connNetwork string
 
@@ -92,6 +115,11 @@ func (command *Command) listen()  *icmp.PacketConn {
 }
 
 
+// Send a single ping.
+// pc: The packet connection on which to send the ping
+// dest: The destination endpoint to send the ping to
+// message: The echo request to send
+// Returns nil, or error
 func sendPing(pc *icmp.PacketConn, dest *net.IPAddr, message *icmp.Message) error {
 	// need to make a byte array for storing the message
 	wb, err := message.Marshal(nil)
@@ -105,6 +133,11 @@ func sendPing(pc *icmp.PacketConn, dest *net.IPAddr, message *icmp.Message) erro
 }
 
 
+// Sends the pings desired by command.
+// pc: The packet connection on which to send the pings
+// timeArr: The array of times that pings were sent at (filled by this func for use in calculating post-run stats)
+// typ: The type field of an IP packet for this ping to use
+// errs: The channel to notify if an error occurs while trying to send an ICMP message
 func (command *Command) sendPings(pc *icmp.PacketConn, timeArr []time.Time, typ icmp.Type, errs chan int) {
 	defer command.wg.Done()
 
@@ -144,7 +177,14 @@ func (command *Command) sendPings(pc *icmp.PacketConn, timeArr []time.Time, typ 
 }
 
 
-func (command *Command) listenPings(pc *icmp.PacketConn, timeArr []time.Time, errs chan int) {
+// Receive pings on the given icmp.PacketConn
+// Continues listening until its received information on all the pings that have been attempted or a signal is sent
+// on the command.done channel
+// pc: The packet connection to listen for echo replies (or dst unreachable or time expired) on
+// timeArr: The array of times (to be filled in by sendPings()) that pings were originally sent at for use in calculating rtt
+// errs: Channel to write the relative seq number of messages that had errors that prevented them from being sent. Is used
+//			to notify receivePings() that a reply is not coming for this message.
+func (command *Command) receivePings(pc *icmp.PacketConn, timeArr []time.Time, errs chan int) {
 	defer command.wg.Done()
 	processed := 0
 	for processed < command.sentAttempts || command.sentAttempts < command.Count {
@@ -201,7 +241,11 @@ func (command *Command) listenPings(pc *icmp.PacketConn, timeArr []time.Time, er
 	}
 }
 
-
+// Process a packet read in by receivePings(). Returns nil, or error on
+// bytes: The byte buffer that the message is stored in.
+// source: The address that the response was received from.
+// proto: The protocol number that the IP packet will have (ICMP over IPv4 or ICMP over IPv6)
+// timeArr: The array of times (filled in by sendPings()) with the times that echo requests are sent. Used to calculate the rtt.
 func (command *Command) processPacket(bytes []byte, source net.Addr, proto int, timeArr []time.Time) error {
 	curTime := time.Now()
 	var msg *icmp.Message
@@ -231,6 +275,7 @@ func (command *Command) processPacket(bytes []byte, source net.Addr, proto int, 
 }
 
 
+// Prints statistics after running the ping command. Similar to the output of *nix ping
 func (command *Command) printStats() {
 	command.Logging.Printf("--- %v ping statistics ---\n", command.Addr)
 	percent := float64(command.sentCount - command.recvCount) * float64(100) / float64(command.sentCount)
@@ -267,11 +312,13 @@ func (command *Command) printStats() {
 }
 
 
+// Send the done channel a message indicating that the program run is over.
 func (command *Command) End() {
 	command.done <- true
 }
 
 
+// Run the pings specified in command, and print the results and statistics to the specified logger.
 // TODO change logging to a generic writer or something
 func (command *Command) Ping() error {
 	timeArr := make([]time.Time, command.Count)
@@ -313,7 +360,7 @@ func (command *Command) Ping() error {
 
 	errs := make(chan int)
 	command.wg.Add(1)
-	go command.listenPings(conn, timeArr, errs)
+	go command.receivePings(conn, timeArr, errs)
 	command.wg.Add(1)
 	go command.sendPings(conn, timeArr, typ, errs)
 

@@ -14,6 +14,7 @@ import (
 	"go-ping/pinger"
 )
 
+// Parse command line arguments specifying parameters with which to run the pings.
 func parseArgs() (*pinger.Command, error){
 	var version pinger.IPVersion = pinger.UNSET	// default val
 	var logging = log.New(os.Stdout, "GO-PING: ", 0)
@@ -59,6 +60,7 @@ func parseArgs() (*pinger.Command, error){
 }
 
 
+// Emulates the ping utility that comes with most OS releases.
 func main() {
 	cmd, err := parseArgs()
 	if err != nil {
